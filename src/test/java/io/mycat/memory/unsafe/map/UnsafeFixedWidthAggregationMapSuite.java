@@ -134,7 +134,7 @@ public class UnsafeFixedWidthAggregationMapSuite {
     int i;
 
     List<UnsafeRow> rows = new  ArrayList<UnsafeRow>();
-    for ( i = 0; i < 100000; i++) {
+    for ( i = 0; i < 9277744; i++) {
       /**
        * key
        */

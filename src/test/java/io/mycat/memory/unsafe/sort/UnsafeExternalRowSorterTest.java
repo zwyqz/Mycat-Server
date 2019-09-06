@@ -37,7 +37,7 @@ import java.util.concurrent.Future;
  */
 public class UnsafeExternalRowSorterTest {
 
-    private static  final  int TEST_SIZE = 100000;
+    private static  final  int TEST_SIZE = 20000000;
     public static final Logger LOGGER = LoggerFactory.getLogger(UnsafeExternalRowSorterTest.class);
 
     /**

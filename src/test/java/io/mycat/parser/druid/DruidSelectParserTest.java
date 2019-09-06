@@ -1,7 +1,12 @@
 package io.mycat.parser.druid;
 
 import com.alibaba.druid.sql.ast.SQLExpr;
+import com.alibaba.druid.sql.ast.SQLStatement;
 import com.alibaba.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.druid.sql.ast.statement.*;
+import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlSelectQueryBlock;
+import com.alibaba.druid.sql.dialect.mysql.parser.MySqlStatementParser;
+import com.alibaba.druid.sql.dialect.mysql.visitor.MySqlASTVisitorAdapter;
 import io.mycat.route.parser.druid.impl.DruidSelectParser;
 import org.junit.Assert;
 import org.junit.Test;
@@ -66,5 +71,76 @@ public class DruidSelectParserTest {
         return  method.invoke(druidSelectParser, groupByItems, aliaColumns);
     }
 
+    @Test
+    public void testSubTable() {
+        String sql  = "SELECT a.id, b.id, b.name FROM warehouse a LEFT JOIN travelrecord b ON a.id = b.id  WHERE b.name = '1'";
+//        String sql  =     "SELECT a.id, a.warehouse_name FROM warehouse a  WHERE a.id = '44666670'";
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        SQLStatement stmt = parser.parseStatement();
+        SQLSelectStatement selectStmt = (SQLSelectStatement)stmt;
+        SQLSelectQuery sqlSelectQuery = selectStmt.getSelect().getQuery();
+        MySqlSelectQueryBlock mysqlSelectQuery = (MySqlSelectQueryBlock)selectStmt.getSelect().getQuery();
 
+        SQLTableSource from = mysqlSelectQuery.getFrom();
+        String orgTable = from.toString();
+        SQLExpr where = mysqlSelectQuery.getWhere();
+        List<SQLIdentifierExpr> exprs = new ArrayList<>(3);
+        if (where != null){
+            where.accept(new MySqlASTVisitorAdapter() {
+                @Override
+                public void endVisit(SQLIdentifierExpr x) {
+                    if (orgTable.equalsIgnoreCase(x.getName())) {
+                        exprs.add(x);
+                    }
+                    super.endVisit(x);
+                }
+            });
+        }
+
+//        SQLTableSource fromTable = ((SQLJoinTableSource)from).getLeft();
+        List<SQLExprTableSource> subSqlTableSourceList = new ArrayList<>();
+                getSubTableSourceList(from,"WAREHOUSE", subSqlTableSourceList);
+
+        for (SQLExprTableSource sqlTableSource : subSqlTableSourceList) {
+            SQLIdentifierExpr sqlIdentifierExpr = new SQLIdentifierExpr();
+            sqlIdentifierExpr.setParent(from);
+            sqlIdentifierExpr.setName("warehouse122111");
+            sqlTableSource.setExpr(sqlIdentifierExpr);
+        }
+        System.out.println(stmt.toString());
+
+//        SQLIdentifierExpr sqlIdentifierExpr = new SQLIdentifierExpr();
+//        sqlIdentifierExpr.setParent(from);
+//        sqlIdentifierExpr.setName("warehouse1");
+//        SQLExprTableSource from2 = new SQLExprTableSource(sqlIdentifierExpr);
+////		from2.setAlias(fromTable.getAlias());
+//		from2.setAlias(from.getAlias());
+//        mysqlSelectQuery.setFrom(from2);
+//        ((SQLJoinTableSource)from).setLeft(from2);
+//        for (SQLIdentifierExpr expr : exprs) {
+//            expr.setName("warehouse1");
+//        }
+//        node.setStatement(stmt.toString());
+    }
+
+    private void getSubTableSourceList(SQLTableSource from, String subTableName, List<SQLExprTableSource> subSqlTableSourceList) {
+        if(from instanceof SQLExprTableSource ) {
+            SQLExprTableSource table = (SQLExprTableSource) from;
+            if( table.getExpr() instanceof SQLIdentifierExpr) {
+                SQLIdentifierExpr sqlIdentifierExpr = (SQLIdentifierExpr)table.getExpr();
+                if(sqlIdentifierExpr.getName().toUpperCase().equals(subTableName)) {
+                    subSqlTableSourceList.add(table);
+                }
+            }
+
+        } else if(from instanceof SQLJoinTableSource ){
+            SQLJoinTableSource table = ((SQLJoinTableSource)from);
+            getSubTableSourceList(table.getLeft(), subTableName, subSqlTableSourceList);
+            getSubTableSourceList(table.getRight(), subTableName, subSqlTableSourceList);
+        } else if(from instanceof SQLSubqueryTableSource) {
+            SQLSubqueryTableSource table = ((SQLSubqueryTableSource)from);
+            MySqlSelectQueryBlock mysqlSelectQuery = (MySqlSelectQueryBlock)table.getSelect().getQuery();
+            getSubTableSourceList(mysqlSelectQuery.getFrom(), subTableName, subSqlTableSourceList);
+        }
+    }
 }

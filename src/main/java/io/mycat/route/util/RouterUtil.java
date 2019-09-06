@@ -1160,7 +1160,7 @@ public class RouterUtil {
 		AbstractPartitionAlgorithm algorithm = rule.getRuleAlgorithm();
 		for (ColumnRoutePair colPair : colRoutePairSet) {
 			if (colPair.colValue != null) {
-				Integer nodeIndx = algorithm.calculate(colPair.colValue);
+				Integer nodeIndx = algorithm.calculate(StringUtil.removeBackquote(colPair.colValue));
 				if (nodeIndx == null) {
 					throw new IllegalArgumentException(
 							"can't find datanode for sharding column:" + col
@@ -1210,6 +1210,11 @@ public class RouterUtil {
 
 		List<String> tables = ctx.getTables();
 
+
+		if(schema.isNoSharding()||(tables.size() >= 1&&isNoSharding(schema,tables.get(0)))) {
+			return routeToSingleNode(rrs, schema.getDataNode(), ctx.getSql());
+		}
+
 		//每个表对应的路由映射
 		Map<String,Set<String>> tablesRouteMap = new HashMap<String,Set<String>>();
 
@@ -1253,9 +1258,6 @@ public class RouterUtil {
 			}
 		}
 
-		if(schema.isNoSharding()||(tables.size() >= 1&&isNoSharding(schema,tables.get(0)))) {
-			return routeToSingleNode(rrs, schema.getDataNode(), ctx.getSql());
-		}
 
 		//只有一个表的
 		if(tables.size() == 1) {
@@ -1436,7 +1438,7 @@ public class RouterUtil {
 					for(ColumnRoutePair pair : partitionValue) {
 						AbstractPartitionAlgorithm algorithm = tableConfig.getRule().getRuleAlgorithm();
 						if(pair.colValue != null) {
-							Integer tableIndex = algorithm.calculate(pair.colValue);
+							Integer tableIndex = algorithm.calculate(StringUtil.removeBackquote(pair.colValue));
 							if(tableIndex == null) {
 								String msg = "can't find any valid datanode :" + tableConfig.getName()
 										+ " -> " + tableConfig.getPartitionColumn() + " -> " + pair.colValue;
@@ -1453,7 +1455,7 @@ public class RouterUtil {
 						}
 						if(pair.rangeValue != null) {
 							Integer[] tableIndexs = algorithm
-									.calculateRange(pair.rangeValue.beginValue.toString(), pair.rangeValue.endValue.toString());
+									.calculateRange(StringUtil.removeBackquote(pair.rangeValue.beginValue.toString()),StringUtil.removeBackquote(pair.rangeValue.endValue.toString()));
 							for(Integer idx : tableIndexs) {
 								String subTable = tableConfig.getDistTables().get(idx);
 								if(subTable != null) {
@@ -1590,6 +1592,7 @@ public class RouterUtil {
 							LOGGER.debug("try to find cache by primary key ");
 						}
 						String tableKey = schema.getName() + '_' + tableName;
+						tableKey = tableKey.toUpperCase();
 						boolean allFound = true;
 						for (ColumnRoutePair pair : primaryKeyPairs) {//可能id in(1,2,3)多主键
 							String cacheKey = pair.colValue;
@@ -1616,6 +1619,7 @@ public class RouterUtil {
 					}
 				}
 				if (isFoundPartitionValue) {//分库表
+                    tablesRouteMap.clear();
 					Set<ColumnRoutePair> partitionValue = columnsMap.get(partionCol);
 					if(partitionValue == null || partitionValue.size() == 0) {
 						if(tablesRouteMap.get(tableName) == null) {
@@ -1626,7 +1630,7 @@ public class RouterUtil {
 						for(ColumnRoutePair pair : partitionValue) {
 							AbstractPartitionAlgorithm algorithm = tableConfig.getRule().getRuleAlgorithm();
 							if(pair.colValue != null) {
-								Integer nodeIndex = algorithm.calculate(pair.colValue);
+								Integer nodeIndex = algorithm.calculate(StringUtil.removeBackquote(pair.colValue));
 								if(nodeIndex == null) {
 									String msg = "can't find any valid datanode :" + tableConfig.getName()
 											+ " -> " + tableConfig.getPartitionColumn() + " -> " + pair.colValue;
