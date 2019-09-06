@@ -1,5 +1,6 @@
 package io.mycat.route.parser.druid.impl;
 
+import com.alibaba.druid.sql.ast.statement.*;
 import com.alibaba.druid.sql.ast.statement.SQLCreateViewStatement.Column;
 import com.alibaba.druid.sql.dialect.mysql.visitor.MySqlASTVisitorAdapter;
 import com.alibaba.druid.sql.visitor.SQLASTVisitor;
@@ -30,14 +31,6 @@ import com.alibaba.druid.sql.ast.expr.SQLMethodInvokeExpr;
 import com.alibaba.druid.sql.ast.expr.SQLNumericLiteralExpr;
 import com.alibaba.druid.sql.ast.expr.SQLPropertyExpr;
 import com.alibaba.druid.sql.ast.expr.SQLTextLiteralExpr;
-import com.alibaba.druid.sql.ast.statement.SQLExprTableSource;
-import com.alibaba.druid.sql.ast.statement.SQLSelectGroupByClause;
-import com.alibaba.druid.sql.ast.statement.SQLSelectItem;
-import com.alibaba.druid.sql.ast.statement.SQLSelectOrderByItem;
-import com.alibaba.druid.sql.ast.statement.SQLSelectQuery;
-import com.alibaba.druid.sql.ast.statement.SQLSelectQueryBlock;
-import com.alibaba.druid.sql.ast.statement.SQLSelectStatement;
-import com.alibaba.druid.sql.ast.statement.SQLTableSource;
 import com.alibaba.druid.sql.dialect.db2.ast.stmt.DB2SelectQueryBlock;
 import com.alibaba.druid.sql.dialect.db2.visitor.DB2OutputVisitor;
 import com.alibaba.druid.sql.dialect.mysql.ast.expr.MySqlOrderingExpr;
@@ -443,15 +436,30 @@ public class DruidSelectParser extends DefaultDruidParser {
 						}
 					});
 				}
+				//获取分表名
+				String sourceSubTableName = "";
+				for (String key : rrs.getSubTableMaps().keySet()) {
+					sourceSubTableName = key;
+				}
+				//需要改写的位置
+				List<SQLExprTableSource> subSqlTableSourceList = new ArrayList<>();
+				getSubTableSourceList(from,sourceSubTableName, subSqlTableSourceList);
+
 				for (RouteResultsetNode node : rrs.getNodes()) {
-					SQLIdentifierExpr sqlIdentifierExpr = new SQLIdentifierExpr();
-					sqlIdentifierExpr.setParent(from);
-					sqlIdentifierExpr.setName(node.getSubTableName());
-					SQLExprTableSource from2 = new SQLExprTableSource(sqlIdentifierExpr);
-					from2.setAlias(from.getAlias());
-					mysqlSelectQuery.setFrom(from2);
+//					SQLIdentifierExpr sqlIdentifierExpr = new SQLIdentifierExpr();
+//					sqlIdentifierExpr.setParent(from);
+//					sqlIdentifierExpr.setName(node.getSubTableName());
+//					SQLExprTableSource from2 = new SQLExprTableSource(sqlIdentifierExpr);
+//					from2.setAlias(from.getAlias());
+//					mysqlSelectQuery.setFrom(from2);
 					for (SQLIdentifierExpr expr : exprs) {
 						expr.setName(node.getSubTableName());
+					}
+					for (SQLExprTableSource sqlExprTableSource : subSqlTableSourceList) {
+						SQLIdentifierExpr sqlIdentifierExpr = new SQLIdentifierExpr();
+						sqlIdentifierExpr.setParent(from);
+						sqlIdentifierExpr.setName(node.getSubTableName());
+						sqlExprTableSource.setExpr(sqlIdentifierExpr);
 					}
 					node.setStatement(stmt.toString());
 					if(!getCurentDbType().equalsIgnoreCase("mysql")) {
@@ -473,6 +481,26 @@ public class DruidSelectParser extends DefaultDruidParser {
 			rrs.setCacheAble(isNeedCache(schema, rrs, mysqlSelectQuery, allConditions));
 		}
 
+	}
+	private void getSubTableSourceList(SQLTableSource from, String subTableName, List<SQLExprTableSource> subSqlTableSourceList) {
+		if(from instanceof SQLExprTableSource ) {
+			SQLExprTableSource table = (SQLExprTableSource) from;
+			if( table.getExpr() instanceof SQLIdentifierExpr) {
+				SQLIdentifierExpr sqlIdentifierExpr = (SQLIdentifierExpr)table.getExpr();
+				if(sqlIdentifierExpr.getName().toUpperCase().equals(subTableName)) {
+					subSqlTableSourceList.add(table);
+				}
+			}
+
+		} else if(from instanceof SQLJoinTableSource){
+			SQLJoinTableSource table = ((SQLJoinTableSource)from);
+			getSubTableSourceList(table.getLeft(), subTableName, subSqlTableSourceList);
+			getSubTableSourceList(table.getRight(), subTableName, subSqlTableSourceList);
+		} else if(from instanceof SQLSubqueryTableSource) {
+			SQLSubqueryTableSource table = ((SQLSubqueryTableSource)from);
+			MySqlSelectQueryBlock mysqlSelectQuery = (MySqlSelectQueryBlock)table.getSelect().getQuery();
+			getSubTableSourceList(mysqlSelectQuery.getFrom(), subTableName, subSqlTableSourceList);
+		}
 	}
 
 	/**
